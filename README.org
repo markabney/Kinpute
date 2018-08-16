@@ -1,0 +1,220 @@
+#+Title: Kinpute
+
+* Introduction
+  =Kinpute= is a software package to improve genotype imputation by using
+  identity by descent (IBD) information. In addition it includes a tool for
+  selecting a subset of individuals from the study on whom to perform
+  sequencing. These sequenced individuals then serve as an internal reference
+  panel during the imputation.
+
+  =Kinpute= has the following features:
+  - Select an optimal set of study individuals to sequence as an internal
+    reference panel.
+  - Works in conjunction with LD based imputation methods to deliver a final,
+    highly accurate set of imputed genotype probabilities.
+  - Uses a novel method to extract more information from IBD than can be done
+    with standard LD based approaches.
+  - Individuals can be closely or distantly (and cryptically) related.
+  - Does not require a pedigree for related individuals.
+  - Does not require phase information (and is thus robust to phasing errors).
+  
+  Note that =Kinpute= is primarily intended to work in conjunction with
+  standard LD-based imputation methods. That is, you would first perform
+  imputation with a standard tool and reference panel (possibly including the
+  internal reference panel) and use the resultant genotype probabilities as
+  "prior" genotype probabilities to =Kinpute=. If, for some reason, it is not
+  possible to run a standard LD-based imputation method, =Kinpute= can still be
+  run, in which case allele frequencies are used to generate prior genotype
+  probabilities. The efficacy of =Kinpute= is also closely tied to the quantity
+  of IBD that exists in the study population. Areas of the genome in an
+  individual that shares little or no IBD with members of the internal
+  reference panel will show little change in the prior genotype probabilities.
+  In the presence of substantial IBD, however, =Kinpute= can dramatically
+  improve the quality of the imputed genotypes.
+
+* Installation
+  =Kinpute= is a self contained C++ software package. There are no dependencies
+  other than having a C++11 compliant compiler. There are two source code files
+  which compile to separate executables. To install simply compile using the
+  commands shown below and place the resulting executables in a directory that
+  is in your PATH. 
+
+** Kinselect
+   =Kinselect= will evaluate a study sample and select a group of a specified
+   size to sequence and serve as a reference panel. It is contained in the
+   source file =kinselect.cpp= and can be compiled, for instance, with =g++=:
+   : g++ -std=c++11 -O3 kinselect.cpp -o kinselect
+
+** Kinpute
+   =Kinpute= will do the actual genotype imputation and is contained in the
+   source code file =kinpute.cpp=. To compile using =g++=, for instance:
+   : g++ -std=c++11 -O3 kinpute.cpp -o kinpute
+
+* Usage
+  If you have a sample of individuals with either known or unknown relatedness
+  (possibly distant), and need to select a subset of the sample to sequence,
+  =kinselect= can help you choose the subset which should be maximally
+  informative for imputation of sequence data to the rest of the sample. If you
+  already have a portion of you study subjects that are sequenced, =kinpute=
+  can be used to improve (or do) the imputation into the rest of the study
+  sample. 
+
+** Kinselect
+   =Kinselect= needs as input a list of IDs of the study subjects, the
+   kinship coefficients between those subjects, and the number of individuals
+   that will be sequenced. Note that the kinship
+   coefficients could be obtained either from a pedigree or estimated from
+   genotype data (as is done, for instance, when computing a genetic
+   relatedness matrix). As output, =kinselect= provides two lists, one of the
+   individuals that were selected to be sequenced, and the other is the
+   remainder of the study subjects.
+
+*** Command line arguments
+    - -s /samplefile/ :: /samplefile/ is the file that contains a list of the
+         study sample. A subset of the listed study sample will be sequenced
+         while the remainder will have their sequence data imputed. The file
+         must have one ID per line. ID's must not have any space characters.
+    - -i /kinshipfile/ :: /kishipfile/ is formatted so that each line has
+         three, white-space separated fields. The first two fields are subject
+         IDs and the third field is the kinship coefficient of that pair.
+    - -n /N/ :: /N/ is the number of subjects from the /samplefile/ which
+                should be selected to be sequenced.
+    - -or /outfile1/ :: Output file /outfile1/ contains the list of IDs that
+                        will comprise the subjects who should be
+                        sequenced. That is, the internal reference panel.
+    - -ou /outfile2/ :: Output file /outfile2/ has the list of subjects who
+                        were in /samplefile/ but not in /outfile1/. These
+                        individuals will have their sequence data imputed.
+    - -v :: /Verbose/ setting. This flag is optional and if present warnings
+            for duplicate individuals in the /samplefile/ and for missing
+            kinship coefficients are printed to the error stream (typically the
+            screen). By default these warnings are not printed.
+
+*** Format notes
+    - IDs should uniquely identify individuals. If you have IDs that have both
+      a family ID and an individual ID, we recommended combining them into a
+      single ID of the form "/familyID,individualID/", i.e. a comma separating
+      the two IDs. Be sure there is no white-space in the final ID.
+    - If you have a duplicate ID in the /samplefile/, =kinselect= will issue a
+      warning only if you specify the =-v= flag on the command line. Otherwise,
+      =kinselect= will silently ignore the duplicate.
+    - The /kinshipfile/ may have kinship coefficients for subjects who are not
+      in the /samplefile/. We do need a value, though, for every pair of
+      individuals who are in the /samplefile/. If a pair is not found in the
+      /kinshipfile/ =kinselect= will silently assume the pair is unrelated
+      (i.e. their kinship coefficient is zero). If the =-v= flag has been given
+      on the command line, =kinselect= will print a warning that the pair was
+      not found in the file. Note that a subject's self-kinship coefficient
+      (i.e. related to the inbreeding coefficient) is not needed and may be
+      omitted from the file.
+
+*** Example
+    In the =example= directory there are a sample kinship file and study sample
+    file. If we want to select the best three people from the study sample file
+    to sequence, we would run the following command:
+    : kinselect -s study -i small.kin -n 3 -or small_ref_panel.txt -ou imp_panel.txt -v
+    The =-v= flag is optional and will print out warning messages about missing
+    individuals. Note that in the file =study= are two individuals =W= and =X=
+    that are not present in the kinship file, and the individual =A= appears
+    twice. =Kinselect= issues warnings, but still selects three individuals who
+    should be sequenced. Note that one of the individuals chosen to be
+    sequenced is (assumed to be) unrelated to all the other subjects. This
+    happens because the algorithm determines that after two of the related
+    individuals are selected for sequencing there is more value to be gained by
+    sequencing an unrelated individual than one of the related ones, even
+    though the unrelated individual will not be informative for imputing the
+    sequence data of any other subject (when imputation is based on IBD).
+    
+** Kinpute
+   =Kinpute= will use IBD information to impute, or improve the imputation of,
+   sequence data in a sample. To do this =kinpute= requires the sequence data
+   of the individuals in the reference panel (this should be an "internal"
+   reference panel of subjects who are related to the imputation sample, as
+   opposed to one of the standard population reference panels), a file with
+   probabilities of the genotypes of the sequence data in the imputation panel,
+   and a file with IBD information between the subjects in the reference panel
+   and the imputation panel. The input genotype probabilities normally is the
+   output from another imputation program, such as IMPUTE2. This file is
+   optional, and if not present =kinpute= will use the allele frequency in the
+   internal reference panel to generate a genotype probability before using IBD
+   to improve this estimate.
+
+   IBD estimates at every SNP in a framework set or markers can provide useful
+   information for imputing genotypes. Clearly, the more IBD that exists
+   between the reference panel and the imputation panel, the better =kinpute=
+   will perform. In regions where there is no IBD, =kinpute= will output
+   posterior genotype probabilities that are the same as the input (prior)
+   genotype probabilities. =Kinpute= works best when multiple individuals in
+   the reference panel are IBD with the region being imputed, particularly if
+   the reference panel individuals also share some IBD at that location. IBD
+   estimates come in the form of conditional probabilities of the nine
+   condensed identity states at each SNP given the observed genotypes at a
+   framework set of markers. These probabilities can be computed using the
+   [[https://sourceforge.net/projects/ibdld/files/][=IBDLD=]] software package.
+
+*** Command line arguments
+    - -ibd /ibdfile/ :: The /ibdfile/ contains the probabilities of the nine
+                        condensed identity states for every SNP in the
+                        framework set for every pair of reference panel
+                        individuals and every imputation panel individual with
+                        each of the reference panel individuals.
+    - -map /mapfile/ :: The map of the framework set of SNPs. This should be
+                        the same file as given to =IBDLD=.
+    - -u /samplefile/ :: The /samplefile/ has the list of individuals to be
+         imputed. There must be one individual per line and in the format
+         "/familyID,individualID/", where the /familyID/ and /individualID/
+         match those values in the /ibdfile/.
+    - -r /refpanelfile/ :: The /refpanelfile/ has the list of individuals who
+         will be used as the reference panel for imputation. There must be only
+         one individual per line and in the format "/familyID,individualID/",
+         where the /familyID/ and /individualID/ match those values in the
+         /ibdfile/.
+    - -seq /sequencefile/ :: The /sequencefile/ has the sequence data for every
+         individual in the reference panel. The sequence data must be formatted
+         as a tped file, see [[https://www.cog-genomics.org/plink2/formats#tped][PLINK documentation]].
+    - -prior /priorprobfile/ :: This flag is optional. If it is not set
+         =kinpute= will assume prior genotype probabilities based on the allele
+         frequencies in the reference panel. If it is set the /priorprobfile/
+         sets the prior genotype probabilities for every genotype that will be
+         imputed. Normally, this will be the output from a standard imputation
+         method that provides "soft calls", i.e. probabilities for each of the
+         three genotypes. The format is the same as the genotype file format
+         used by [[http://www.stats.ox.ac.uk/~marchini/software/gwas/file_format.html][IMPUTE2]]. This means that the imputation output from IMPUTE2
+         can be used directly as the /priorprobfile/.
+    - -o /outputfile/ :: The /outputfile/ has the posterior probabilities of
+         the genotypes of the individuals in the /samplefile/. The format is
+         identical to the format of the /priorprobfile/.
+
+*** Format notes
+    - We recommend using [[https://sourceforge.net/projects/ibdld/files/][=IBDLD=]] to create the /ibdfile/. The /ibdfile/ format
+      is the same as the output file format from =IBDLD= when using the "=-ibd
+      9 --ibdtxt=" flags.
+    - In the /ibdfile/ the /familyID/ and /individualID/ are separated by white
+      space. These IDs must match the reformatted ID "/familyID,individualID/"
+      that appears in the /refpanelfile/ and /samplefile/.
+    - The order of the individuals in the /samplefile/ is assumed to be the
+      order in the /priorprobfile/. It is also the order of the individuals in
+      the /outputfile/.
+    - =Kinpute= also assumes the order of individuals in the /refpanelfile/ is
+      the order of the individuals in the /sequencefile/, i.e. the tped file.
+    - =Kinpute= does not need a tfam file, as is required by =Plink=, only the
+      tped file.
+    - The markers in the /sequencefile/ and /priorprobfile/ should be ordered
+      by physical position and no markers should have the same position as
+      another marker.
+
+*** Example
+    In the =example= directory are files that can be used to run an example
+    imputation analysis. In this example we assume that =IBDLD= has already
+    been run and you are doing imputation on a single chromosome. In general,
+    =kinpute= should be run on different chromosome separately. We also assume
+    that IMPUTE2 was run on the imputation sample resulting in the prior
+    genotype probability file =prior_gprob.txt=. To perform imputation on the
+    individuals in =study_panel.txt= you would use the following:
+    : kinpute -ibd ibd.ibdtxt -map map.txt -u study_panel.txt -r ref_panel.txt \
+    : -seq seq.tped -prior prior_gprob.txt -o imputed_genos
+
+    To perform imputation without having run IMPUTE2 (or some other imputation
+    method) first, execute the same command but without the =-prior= flag:
+    : kinpute -ibd ibd.ibdtxt -map map.txt -u study_panel.txt -r ref_panel.txt
+    : -seq seq.tped  -o imputed_genos
